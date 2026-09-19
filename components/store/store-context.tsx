@@ -40,11 +40,29 @@ export type Order = {
   time: string
 }
 
+export type StoreSettings = {
+  debt_notifications: boolean
+  inventory_notifications: boolean
+  order_notifications: boolean
+  weekly_reports: boolean
+  dark_mode: boolean
+}
+
+export type NotificationItem = {
+  id: string
+  title: string
+  message: string
+  type: "debt" | "inventory" | "order" | "report"
+  createdAt: string
+}
+
 type StoreContextValue = {
   debtors: Debtor[]
   products: Product[]
   campaigns: Campaign[]
   orders: Order[]
+  settings: StoreSettings
+  notifications: NotificationItem[]
   query: string
   setQuery: (q: string) => void
   isLoading: boolean
@@ -53,6 +71,7 @@ type StoreContextValue = {
   collectDebt: (id: string) => Promise<void>
   addProduct: (p: Omit<Product, "id">) => Promise<void>
   restockProduct: (id: string, amount: number) => Promise<void>
+  updateSetting: (key: keyof StoreSettings, value: boolean) => Promise<void>
   addCampaign: (c: Omit<Campaign, "id">) => void
   toggleCampaign: (id: string) => void
   addOrder: (o: Omit<Order, "id" | "time">) => void
@@ -63,25 +82,20 @@ const StoreContext = createContext<StoreContextValue | null>(null)
 let counter = 0
 const uid = () => `id-${Date.now()}-${counter++}`
 
-const initialCampaigns: Campaign[] = [
-  { id: uid(), title: "خصم نهاية الأسبوع", desc: "خصم ١٥٪ على كل المواد الغذائية", type: "خصم", active: true },
-  { id: uid(), title: "اشترِ ٢ واحصل على ١", desc: "على منتجات الألبان المختارة", type: "هدية", active: true },
-  { id: uid(), title: "عرض الزبائن الجدد", desc: "توصيل مجاني لأول طلب", type: "توصيل", active: false },
-  { id: uid(), title: "تخفيضات العيد", desc: "خصومات تصل إلى ٣٠٪", type: "خصم", active: false },
-]
-
-const initialOrders: Order[] = [
-  { id: uid(), customer: "حسن علي", items: 5, total: 24000, status: "مكتمل", time: "قبل ١٠ دقائق" },
-  { id: uid(), customer: "زينب حسن", items: 2, total: 8400, status: "قيد التجهيز", time: "قبل ٢٥ دقيقة" },
-  { id: uid(), customer: "مروان قاسم", items: 8, total: 41000, status: "مكتمل", time: "قبل ساعة" },
-  { id: uid(), customer: "أم كرار", items: 3, total: 12500, status: "ملغى", time: "قبل ساعتين" },
-]
+const defaultSettings: StoreSettings = {
+  debt_notifications: true,
+  inventory_notifications: true,
+  order_notifications: false,
+  weekly_reports: false,
+  dark_mode: false,
+}
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
-  const [orders, setOrders] = useState<Order[]>(initialOrders)
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [settings, setSettings] = useState<StoreSettings>(defaultSettings)
   const [query, setQuery] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
@@ -94,9 +108,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const [{ data: productRows, error: productsError }, { data: debtRows, error: debtsError }] = await Promise.all([
+      const [{ data: productRows, error: productsError }, { data: debtRows, error: debtsError }, { data: settingsRow, error: settingsError }] = await Promise.all([
         supabase.from("products").select("*").order("title"),
         supabase.from("debts").select("*").order("due_date", { ascending: true }),
+        supabase.from("settings").select("*").maybeSingle(),
       ])
 
       if (productsError || debtsError) {
@@ -106,7 +121,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           (productRows ?? []).map((row) => ({
             id: row.id,
             name: row.title,
-            category: "مواد غذائية",
+            category: row.category ?? "مواد غذائية",
             stock: Number(row.stock),
             max: Math.max(100, Number(row.stock) * 2),
             price: Number(row.price),
@@ -125,11 +140,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })),
         )
       }
+
+      if (settingsError) {
+        console.warn("settings query failed:", settingsError.message)
+      }
+
+      if (settingsRow) {
+        setSettings({
+          debt_notifications: settingsRow.debt_notifications ?? true,
+          inventory_notifications: settingsRow.inventory_notifications ?? true,
+          order_notifications: settingsRow.order_notifications ?? false,
+          weekly_reports: settingsRow.weekly_reports ?? false,
+          dark_mode: settingsRow.dark_mode ?? false,
+        })
+      } else {
+        const { error: insertError } = await supabase.from("settings").insert(defaultSettings).select().single()
+        if (!insertError) {
+          setSettings(defaultSettings)
+        }
+      }
+
       setIsLoading(false)
     }
 
     void loadStoreData()
   }, [])
+
+  const notifications = useMemo<NotificationItem[]>(() => {
+    const items: NotificationItem[] = []
+
+    if (settings.inventory_notifications) {
+      products
+        .filter((product) => product.stock > 0 && product.stock <= 10)
+        .slice(0, 3)
+        .forEach((product) => {
+          items.push({
+            id: `inventory-${product.id}`,
+            title: "منتج قريب من النفاد",
+            message: `${product.name} تبقى ${product.stock} وحدات فقط`,
+            type: "inventory",
+            createdAt: new Date().toISOString(),
+          })
+        })
+    }
+
+    if (settings.debt_notifications) {
+      debtors
+        .filter((debtor) => !debtor.paid && debtor.overdue)
+        .slice(0, 3)
+        .forEach((debtor) => {
+          items.push({
+            id: `debt-${debtor.id}`,
+            title: "دين مستحق",
+            message: `${debtor.name} لديه مبلغ ${debtor.amount} د.ع مستحق`,
+            type: "debt",
+            createdAt: new Date().toISOString(),
+          })
+        })
+    }
+
+    if (settings.order_notifications) {
+      orders.slice(0, 2).forEach((order) => {
+        items.push({
+          id: `order-${order.id}`,
+          title: "طلب جديد",
+          message: `${order.customer} أرسل طلباً جديداً بقيمة ${order.total} د.ع`,
+          type: "order",
+          createdAt: new Date().toISOString(),
+        })
+      })
+    }
+
+    if (settings.weekly_reports) {
+      items.push({
+        id: "report-weekly",
+        title: "تقرير الأسبوع",
+        message: "ملخص المبيعات الأسبوعي جاهز للمراجعة.",
+        type: "report",
+        createdAt: new Date().toISOString(),
+      })
+    }
+
+    return items.slice(0, 6)
+  }, [debtors, orders, products, settings])
 
   const value = useMemo<StoreContextValue>(
     () => ({
@@ -137,6 +230,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       products,
       campaigns,
       orders,
+      settings,
+      notifications,
       query,
       setQuery,
       isLoading,
@@ -173,6 +268,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             stock: p.stock,
             status: p.stock === 0 ? "نفاذ" : "متوفر",
             image_url: p.imageUrl ?? null,
+            category: p.category,
           })
           .select()
           .single()
@@ -188,12 +284,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (error) throw error
         setProducts((prev) => prev.map((x) => (x.id === id ? { ...x, stock } : x)))
       },
+      updateSetting: async (key, value) => {
+        if (!supabase) return
+        const nextSettings = { ...settings, [key]: value }
+        const { error } = await supabase.from("settings").update(nextSettings).eq("id", "1")
+        if (!error) setSettings(nextSettings)
+      },
       addCampaign: (c) => setCampaigns((prev) => [{ ...c, id: uid() }, ...prev]),
       toggleCampaign: (id) =>
         setCampaigns((prev) => prev.map((x) => (x.id === id ? { ...x, active: !x.active } : x))),
       addOrder: (o) => setOrders((prev) => [{ ...o, id: uid(), time: "الآن" }, ...prev]),
     }),
-    [debtors, products, campaigns, orders, query, isLoading, dataError],
+    [debtors, products, campaigns, orders, settings, notifications, query, isLoading, dataError],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

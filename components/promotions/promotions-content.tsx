@@ -1,206 +1,246 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Header } from "@/components/dashboard/header"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
+import { Megaphone, Plus, Image as ImageIcon, Send, Clock, CheckCircle2, XCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Megaphone, Tag, Gift, Percent, Send } from "lucide-react"
-import { useStore, toArabicNumber } from "@/components/store/store-context"
-import { toast } from "sonner"
 
-const typeIcons: Record<string, typeof Tag> = {
-  خصم: Percent,
-  هدية: Gift,
-  توصيل: Tag,
+const defaultForm = {
+  title: "",
+  template_type: "خصم",
+  message_body: "",
+  image_url: "",
 }
 
-const templates = [
-  "🎉 عرض خاص! خصم ١٥٪ على كل المشتريات لنهاية الأسبوع فقط. زوروا متجرنا!",
-  "وصلتنا بضاعة جديدة! تفضلوا لمشاهدة أحدث المنتجات بأسعار مناسبة.",
-  "تذكير: عرض اشترِ قطعتين واحصل على الثالثة مجاناً ينتهي غداً!",
-]
-
 export function PromotionsContent() {
-  const { campaigns, toggleCampaign, addCampaign } = useStore()
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
-  const [desc, setDesc] = useState("")
-  const [type, setType] = useState("خصم")
+  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [formData, setFormData] = useState(defaultForm)
 
-  const stats = useMemo(() => {
-    const active = campaigns.filter((c) => c.active).length
-    return [
-      { title: "عروض نشطة", value: toArabicNumber(active), icon: Tag },
-      { title: "رسائل مرسلة", value: "١٬٢٤٠", icon: Send },
-      { title: "زبائن مستهدفون", value: "٣٨٦", icon: Megaphone },
-    ]
-  }, [campaigns])
-
-  function handleToggle(id: string, campTitle: string, active: boolean) {
-    toggleCampaign(id)
-    toast.success(active ? `تم إيقاف حملة "${campTitle}"` : `تم تفعيل حملة "${campTitle}"`)
+  const fetchCampaigns = async () => {
+    const { data, error } = await supabase.from("campaigns").select("*").order("created_at", { ascending: false })
+    if (!error && data) setCampaigns(data)
   }
 
-  function handleAdd() {
-    if (!title.trim() || !desc.trim()) {
-      toast.error("يرجى إدخال عنوان ووصف الحملة")
-      return
+  useEffect(() => {
+    void fetchCampaigns()
+  }, [])
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      if (!e.target.files || e.target.files.length === 0) return
+      setUploading(true)
+
+      const file = e.target.files[0]
+      const fileExt = file.name.split(".").pop()
+      const filePath = `campaigns/${Date.now()}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage.from("product-images").upload(filePath, file)
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from("product-images").getPublicUrl(filePath)
+      setFormData((prev) => ({ ...prev, image_url: data.publicUrl }))
+    } catch (err) {
+      console.error("خطأ في رفع الصورة:", err)
+    } finally {
+      setUploading(false)
     }
-    addCampaign({ title: title.trim(), desc: desc.trim(), type, active: true })
-    toast.success(`تم إنشاء حملة "${title.trim()}"`)
-    setTitle("")
-    setDesc("")
-    setType("خصم")
-    setOpen(false)
+  }
+
+  const handleSubmitCampaign = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.title.trim() || !formData.message_body.trim()) return
+
+    try {
+      setSubmitting(true)
+      const { error } = await supabase.from("campaigns").insert([
+        {
+          title: formData.title.trim(),
+          template_type: formData.template_type,
+          message_body: formData.message_body.trim(),
+          image_url: formData.image_url || null,
+          status: "pending",
+        },
+      ])
+
+      if (error) throw error
+
+      setIsModalOpen(false)
+      setFormData(defaultForm)
+      await fetchCampaigns()
+    } catch (err) {
+      console.error("خطأ في إنشاء الحملة:", err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    if (status === "pending")
+      return {
+        label: "بانتظار موافقة المدير",
+        className: "bg-amber-100 text-amber-800",
+        icon: Clock,
+      }
+
+    if (status === "approved" || status === "active")
+      return {
+        label: status === "active" ? "تم النشر / نشطة" : "تمت الموافقة",
+        className: "bg-emerald-100 text-emerald-800",
+        icon: CheckCircle2,
+      }
+
+    return {
+      label: "مرفوضة من المدير",
+      className: "bg-red-100 text-red-800",
+      icon: XCircle,
+    }
   }
 
   return (
-    <>
-      <Header
-        title="الترويج والعروض"
-        description="أنشئ حملات ترويجية ورسائل تصل إلى زبائنك مباشرة."
-        actions={
-          <Button
-            onClick={() => setOpen(true)}
-            className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 hover:shadow-lg hover:shadow-primary/30"
-          >
-            + حملة جديدة
-          </Button>
-        }
-      />
-
-      <div className="mt-4 md:mt-5 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {stats.map((item) => (
-            <Card key={item.title} className="p-4 flex items-center gap-3 transition-all duration-300 hover:shadow-lg">
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                <item.icon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{item.title}</p>
-                <p className="text-lg font-bold text-foreground">{item.value}</p>
-              </div>
-            </Card>
-          ))}
+    <div className="p-8 space-y-6" dir="rtl">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">إدارة الحملات والترويج</h1>
+          <p className="text-sm text-gray-500">قم بإعداد طلبات البث الإعلاني وإرسالها للمدير للموافق عليها</p>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">الحملات</h2>
-            {campaigns.map((campaign) => {
-              const Icon = typeIcons[campaign.type] ?? Tag
-              return (
-                <Card
-                  key={campaign.id}
-                  className="p-4 flex items-center gap-3 transition-all duration-300 hover:shadow-lg"
-                >
-                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-foreground truncate">{campaign.title}</p>
-                      <Badge variant="secondary" className="font-normal shrink-0">
-                        {campaign.type}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{campaign.desc}</p>
-                  </div>
-                  <Switch
-                    checked={campaign.active}
-                    onCheckedChange={() => handleToggle(campaign.id, campaign.title, campaign.active)}
-                    aria-label={`تفعيل حملة ${campaign.title}`}
-                  />
-                </Card>
-              )
-            })}
-          </div>
-
-          <Card className="p-4 h-fit">
-            <h2 className="text-base font-semibold text-foreground mb-3">قوالب الرسائل الترويجية</h2>
-            <div className="space-y-2.5">
-              {templates.map((template, i) => (
-                <div key={i} className="rounded-lg border border-border p-3 hover:border-primary/40 transition-colors">
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{template}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toast.success("تم إرسال الرسالة إلى ٣٨٦ زبون")}
-                    className="h-7 text-xs w-full hover:bg-secondary gap-1.5"
-                  >
-                    <Send className="w-3.5 h-3.5" /> إرسال للزبائن
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-800 transition"
+        >
+          <Plus className="h-5 w-5" /> إنشاء حملة جديدة
+        </button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader className="text-right">
-            <DialogTitle>إنشاء حملة جديدة</DialogTitle>
-            <DialogDescription>حدد نوع العرض وتفاصيله لإطلاق الحملة.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="camp-title">عنوان الحملة</Label>
-              <Input
-                id="camp-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="مثال: خصم نهاية الأسبوع"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>نوع العرض</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="خصم">خصم</SelectItem>
-                  <SelectItem value="هدية">هدية</SelectItem>
-                  <SelectItem value="توصيل">توصيل مجاني</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="camp-desc">وصف العرض</Label>
-              <Textarea
-                id="camp-desc"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                placeholder="مثال: خصم ١٥٪ على كل المواد الغذائية"
-                className="min-h-20 resize-none"
-              />
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {campaigns.length === 0 ? (
+          <div className="col-span-2 bg-white p-12 rounded-xl border text-center text-gray-400">
+            لا توجد حملات إعلانية حالياً. اضغط "إنشاء حملة جديدة" للبدء.
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setOpen(false)} className="bg-transparent">
-              إلغاء
-            </Button>
-            <Button onClick={handleAdd} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              إطلاق الحملة
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        ) : (
+          campaigns.map((item) => {
+            const statusInfo = getStatusBadge(item.status)
+            const Icon = statusInfo.icon
+            const isActive = item.status === "active" || item.status === "approved"
+
+            return (
+              <div key={item.id} className="bg-white p-5 rounded-xl border space-y-4 shadow-sm">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex items-center gap-3">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="صورة الإعلان" className="w-12 h-12 rounded-lg object-cover border" />
+                    ) : (
+                      <div className="w-12 h-12 bg-emerald-50 text-emerald-700 rounded-lg flex items-center justify-center">
+                        <Megaphone className="h-6 w-6" />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-gray-800">{item.title}</h3>
+                      <span className="text-xs text-gray-400">قالب: {item.template_type}</span>
+                    </div>
+                  </div>
+
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusInfo.className}`}>
+                    <Icon className="h-3 w-3" />
+                    {statusInfo.label}
+                  </span>
+                </div>
+
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border">{item.message_body}</p>
+
+                <div className="flex justify-between items-center border-t pt-3">
+                  <span className="text-xs text-gray-500">حالة البث:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-600">{isActive ? "مفعل" : "غير مفعل (يتطلب موافقة)"}</span>
+                    <div className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActive ? "bg-emerald-600" : "bg-gray-300"}`}>
+                      <span className={`absolute start-1 h-4 w-4 rounded-full bg-white transition-[inset-inline-start,inset-inline-end] ${isActive ? "start-auto end-1" : ""}`} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
+            <h2 className="font-bold text-lg text-gray-800 border-b pb-2">إنشاء طلب حملة ترويجية جديدة</h2>
+
+            <form onSubmit={(e) => void handleSubmitCampaign(e)} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">عنوان الحملة</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: خصم بداية الشهر"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">نوع القالب</label>
+                <Select
+                  value={formData.template_type}
+                  onValueChange={(template_type) => setFormData({ ...formData, template_type })}
+                >
+                  <SelectTrigger className="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-right text-sm shadow-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="خصم">قالب خصومات ونسبة مئوية</SelectItem>
+                    <SelectItem value="هدية">قالب اشترِ قطعة واحصل على قطعة</SelectItem>
+                    <SelectItem value="منتج جديد">قالب وصول بضاعة جديدة</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">نص الرسالة الترويجية</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="اكتب تفاصيل العرض..."
+                  value={formData.message_body}
+                  onChange={(e) => setFormData({ ...formData, message_body: e.target.value })}
+                  className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">صورة الإعلان (اختياري)</label>
+                <div className="border border-dashed p-3 rounded-lg text-center flex flex-col items-center gap-1">
+                  <ImageIcon className="h-6 w-6 text-gray-400" />
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="text-xs" />
+                  {uploading && <span className="text-xs text-amber-600">جاري رفع الصورة...</span>}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading || submitting}
+                  className="bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-1 hover:bg-emerald-800 disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" /> {submitting ? "جارٍ الإرسال..." : "إرسال للمدير للمراجعة"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

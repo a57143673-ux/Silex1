@@ -5,15 +5,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-
-const debts = [
-  { name: "حسن علي", amount: "٣٬٢٠٠", status: "متأخر", overdue: true },
-  { name: "مروان قاسم", amount: "١٬٨٥٠", status: "قريب الاستحقاق", overdue: false },
-  { name: "سالم يوسف", amount: "٩٠٠", status: "ضمن المدة", overdue: false },
-  { name: "أم كرار", amount: "٢٬٤٠٠", status: "متأخر", overdue: true },
-]
+import { useStore, formatIQD } from "@/components/store/store-context"
 
 export function DebtsSummary() {
+  const { debtors } = useStore()
+  const debts = debtors.slice(0, 4)
   return (
     <Card className="p-6 transition-all duration-500 hover:shadow-xl animate-slide-in-up">
       <div className="flex items-center justify-between mb-5">
@@ -23,8 +19,8 @@ export function DebtsSummary() {
         </Link>
       </div>
       <div className="space-y-3">
-        {debts.map((debt) => (
-          <div key={debt.name} className="flex items-center gap-3">
+        {debts.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">لا توجد ديون مسجلة.</p> : debts.map((debt) => (
+          <div key={debt.id} className="flex items-center gap-3">
             <Avatar className="w-9 h-9">
               <AvatarFallback className="text-xs bg-secondary">{debt.name.slice(0, 2)}</AvatarFallback>
             </Avatar>
@@ -34,10 +30,10 @@ export function DebtsSummary() {
                 variant={debt.overdue ? "destructive" : "secondary"}
                 className="text-[10px] mt-0.5 font-normal"
               >
-                {debt.status}
+                {debt.paid ? "تم التحصيل" : debt.overdue ? "متأخر" : "ضمن المدة"}
               </Badge>
             </div>
-            <span className="text-sm font-semibold text-foreground whitespace-nowrap">{debt.amount} د.ع</span>
+            <span className="text-sm font-semibold text-foreground whitespace-nowrap">{formatIQD(debt.amount)}</span>
           </div>
         ))}
       </div>

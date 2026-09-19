@@ -2,16 +2,10 @@
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-
-const orders = [
-  { id: "#١٠٤٨", customer: "زينب حسن", total: "٧٥٠", type: "نقد" },
-  { id: "#١٠٤٧", customer: "علي محمود", total: "١٬٢٠٠", type: "دين" },
-  { id: "#١٠٤٦", customer: "نور صباح", total: "٤٣٠", type: "نقد" },
-  { id: "#١٠٤٥", customer: "كرار عماد", total: "٢٬١٠٠", type: "دين" },
-  { id: "#١٠٤٤", customer: "سجى وليد", total: "٩٨٠", type: "نقد" },
-]
+import { useStore, formatIQD } from "@/components/store/store-context"
 
 export function RecentOrders() {
+  const { orders } = useStore()
   return (
     <Card className="p-6 transition-all duration-500 hover:shadow-xl animate-slide-in-up">
       <div className="flex items-center justify-between mb-5">
@@ -19,7 +13,7 @@ export function RecentOrders() {
         <span className="text-xs text-muted-foreground">اليوم</span>
       </div>
       <div className="space-y-2">
-        {orders.map((order) => (
+        {orders.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">لا توجد فواتير حقيقية بعد.</p> : orders.map((order) => (
           <div
             key={order.id}
             className="flex items-center justify-between py-2 border-b border-border last:border-0"
@@ -29,10 +23,10 @@ export function RecentOrders() {
               <p className="text-[11px] text-muted-foreground">{order.id}</p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant={order.type === "دين" ? "outline" : "secondary"} className="text-[10px] font-normal">
-                {order.type}
+              <Badge variant={order.status === "ملغى" ? "outline" : "secondary"} className="text-[10px] font-normal">
+                {order.status}
               </Badge>
-              <span className="text-sm font-semibold text-foreground">{order.total} د.ع</span>
+              <span className="text-sm font-semibold text-foreground">{formatIQD(order.total)}</span>
             </div>
           </div>
         ))}

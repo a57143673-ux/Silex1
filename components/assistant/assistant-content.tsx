@@ -29,17 +29,12 @@ const suggestionsByTone: Record<Tone, string> = {
 
 type Message = { from: "customer" | "merchant"; text: string }
 
-const initialConversation: Message[] = [
-  { from: "customer", text: "السلام عليكم، شكد سعر الرز عنبر ٥ كيلو؟" },
-  { from: "merchant", text: "وعليكم السلام، سعره ١٢٬٠٠٠ دينار ومتوفر حالياً." },
-  { from: "customer", text: "زين، ممكن توصلوه اليوم؟" },
-]
-
 export function AssistantContent() {
   const [reply, setReply] = useState("")
   const [activeTone, setActiveTone] = useState<Tone>("ودّي")
   const [copied, setCopied] = useState<number | null>(null)
-  const [conversation, setConversation] = useState<Message[]>(initialConversation)
+  const [isSuggesting, setIsSuggesting] = useState(false)
+  const [conversation, setConversation] = useState<Message[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
 
   function scrollToBottom() {
@@ -60,9 +55,37 @@ export function AssistantContent() {
     toast.success("تم إرسال الرد إلى الزبون")
   }
 
-  function handleSuggest() {
-    setReply(suggestionsByTone[activeTone])
-    toast.success(`تم اقتراح رد بنبرة "${activeTone}"`)
+  async function handleSuggest() {
+    const lastCustomerMessage = [...conversation].reverse().find((message) => message.from === "customer")
+    if (!lastCustomerMessage) {
+      setReply(suggestionsByTone[activeTone])
+      toast.success(`تم اقتراح رد بنبرة "${activeTone}"`)
+      return
+    }
+
+    setIsSuggesting(true)
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerMessage: `اكتب ردًا بنبرة ${activeTone} على رسالة الزبون التالية:\n${lastCustomerMessage.text}`,
+          chatHistory: conversation.map((message) => ({
+            role: message.from === "customer" ? "user" : "model",
+            content: message.text,
+          })),
+        }),
+      })
+      const result = (await response.json()) as { reply?: string; error?: string }
+      if (!response.ok || !result.reply) throw new Error(result.error ?? "تعذر الحصول على اقتراح")
+      setReply(result.reply)
+      toast.success(`تم اقتراح رد بنبرة "${activeTone}"`)
+    } catch (error) {
+      setReply(suggestionsByTone[activeTone])
+      toast.error(error instanceof Error ? `${error.message}، تم استخدام اقتراح محلي` : "تم استخدام اقتراح محلي")
+    } finally {
+      setIsSuggesting(false)
+    }
   }
 
   function useTemplate(text: string) {
@@ -154,8 +177,8 @@ export function AssistantContent() {
               >
                 <Send className="w-4 h-4" /> إرسال الرد
               </Button>
-              <Button onClick={handleSuggest} variant="outline" className="h-9 text-sm bg-transparent gap-1.5">
-                <Sparkles className="w-4 h-4" /> اقتراح
+              <Button onClick={() => void handleSuggest()} variant="outline" disabled={isSuggesting} className="h-9 text-sm bg-transparent gap-1.5">
+                <Sparkles className="w-4 h-4" /> {isSuggesting ? "جارٍ الاقتراح..." : "اقتراح"}
               </Button>
             </div>
           </div>

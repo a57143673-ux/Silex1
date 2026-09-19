@@ -18,7 +18,7 @@ import { usePathname } from "next/navigation"
 
 const menuItems = [
   { icon: LayoutDashboard, label: "لوحة التحكم", href: "/" },
-  { icon: BookOpen, label: "دفتر الديون", badge: "8", href: "/debts" },
+  { icon: BookOpen, label: "دفتر الديون", href: "/debts" },
   { icon: Warehouse, label: "المخازن", href: "/inventory" },
   { icon: MessageSquareReply, label: "مساعد الردود", href: "/assistant" },
   { icon: Megaphone, label: "الترويج", href: "/promotions" },
@@ -67,11 +67,6 @@ export function Sidebar() {
                 >
                   <item.icon className="w-4 h-4" />
                   <span className="text-sm">{item.label}</span>
-                  {item.badge && (
-                    <span className="ms-auto bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 rounded-full animate-pulse">
-                      {item.badge}
-                    </span>
-                  )}
                 </Link>
               )
             })}

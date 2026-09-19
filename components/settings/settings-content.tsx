@@ -6,10 +6,33 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useTheme } from "@/components/theme-provider"
+import { useStore } from "@/components/store/store-context"
 
 export function SettingsContent() {
-  const { theme, setTheme } = useTheme()
+  const { settings, updateSetting } = useStore()
+
+  const notificationItems = [
+    {
+      key: "debt_notifications" as const,
+      label: "إشعارات الديون المستحقة",
+      description: "تنبيه عند اقتراب موعد استحقاق دين",
+    },
+    {
+      key: "inventory_notifications" as const,
+      label: "تنبيهات نفاد المخزون",
+      description: "تنبيه عند قرب نفاد أحد المنتجات",
+    },
+    {
+      key: "order_notifications" as const,
+      label: "طلبات الزبائن الجديدة",
+      description: "إشعار عند وصول طلب جديد",
+    },
+    {
+      key: "weekly_reports" as const,
+      label: "تقارير المبيعات الأسبوعية",
+      description: "ملخص أسبوعي لأداء المتجر",
+    },
+  ]
 
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl">
@@ -53,12 +76,7 @@ export function SettingsContent() {
       <Card className="p-6">
         <h3 className="font-semibold text-lg mb-6">الإشعارات</h3>
         <div className="space-y-4">
-          {[
-            { label: "إشعارات الديون المستحقة", description: "تنبيه عند اقتراب موعد استحقاق دين" },
-            { label: "تنبيهات نفاد المخزون", description: "تنبيه عند قرب نفاد أحد المنتجات" },
-            { label: "طلبات الزبائن الجديدة", description: "إشعار عند وصول طلب جديد" },
-            { label: "تقارير المبيعات الأسبوعية", description: "ملخص أسبوعي لأداء المتجر" },
-          ].map((item, index) => (
+          {notificationItems.map((item) => (
             <div
               key={item.label}
               className="flex items-center justify-between py-3 border-b border-border last:border-0"
@@ -67,24 +85,15 @@ export function SettingsContent() {
                 <p className="font-medium">{item.label}</p>
                 <p className="text-sm text-muted-foreground">{item.description}</p>
               </div>
-              <Switch defaultChecked={index < 2} />
+              <Switch
+                checked={settings[item.key]}
+                onCheckedChange={(checked) => void updateSetting(item.key, checked)}
+              />
             </div>
           ))}
         </div>
       </Card>
 
-      <Card className="p-6">
-        <h3 className="font-semibold text-lg mb-6">المظهر</h3>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">الوضع الليلي</p>
-              <p className="text-sm text-muted-foreground">تفعيل المظهر الداكن</p>
-            </div>
-            <Switch checked={theme === "dark"} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
-          </div>
-        </div>
-      </Card>
     </div>
   )
 }

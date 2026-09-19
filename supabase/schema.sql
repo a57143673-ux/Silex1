@@ -1,49 +1,85 @@
-create extension if not exists pgcrypto;
+-- ==========================================
+-- Schema for Merchant Dashboard (Tasko Platform)
+-- ==========================================
 
-create table if not exists public.products (
-  id uuid primary key default gen_random_uuid(),
-  title text not null,
-  price numeric not null check (price >= 0),
-  stock integer not null default 0 check (stock >= 0),
-  status text not null default 'متوفر' check (status in ('متوفر', 'نفاذ', 'استلام')),
-  image_url text,
-  created_at timestamptz not null default now()
+-- 1. جدول المخازن والمنتجات (Products & Inventory)
+CREATE TABLE IF NOT EXISTS public.products (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    price NUMERIC(10, 2) DEFAULT 0 NOT NULL,
+    stock INT DEFAULT 0 NOT NULL,
+    status TEXT CHECK (status IN ('متوفر', 'منخفض', 'نفاذ', 'استلام')) DEFAULT 'متوفر',
+    image_url TEXT
 );
 
-create table if not exists public.debts (
-  id uuid primary key default gen_random_uuid(),
-  customer_name text not null,
-  phone text,
-  amount numeric not null check (amount > 0),
-  due_date text,
-  status text not null default 'متأخر' check (status in ('تم الاستلام', 'متأخر')),
-  created_at timestamptz not null default now()
+-- 2. جدول دفتر الديون (Debts Management)
+CREATE TABLE IF NOT EXISTS public.debts (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    customer_name TEXT NOT NULL,
+    phone TEXT,
+    amount NUMERIC(10, 2) DEFAULT 0 NOT NULL,
+    due_date DATE NOT NULL,
+    status TEXT CHECK (status IN ('ضمن المدة', 'متأخر', 'تم تحصيله')) DEFAULT 'ضمن المدة'
 );
 
-create table if not exists public.settings (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete cascade,
-  notifications_debts boolean not null default true,
-  notifications_inventory boolean not null default true,
-  unique (user_id)
+-- 3. جدول الإعدادات والتنبيهات (Store Settings)
+CREATE TABLE IF NOT EXISTS public.settings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    debt_notifications BOOLEAN DEFAULT true,
+    inventory_notifications BOOLEAN DEFAULT true,
+    order_notifications BOOLEAN DEFAULT false,
+    weekly_reports BOOLEAN DEFAULT false,
+    dark_mode BOOLEAN DEFAULT false,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
-insert into storage.buckets (id, name, public)
-values ('product-images', 'product-images', true)
-on conflict (id) do update set public = true;
+-- 4. إعداد حاوية الصور (Supabase Storage Bucket for Products)
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('product-images', 'product-images', true)
+ON CONFLICT (id) DO NOTHING;
 
-create policy "Public product image read access"
-on storage.objects for select
-to public
-using (bucket_id = 'product-images');
+-- سياسات الوصول للصورة (Storage Security Policies)
+CREATE POLICY "Public Read Images" ON storage.objects FOR SELECT USING (bucket_id = 'product-images');
+CREATE POLICY "Authenticated Upload Images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-images');
+CREATE POLICY "Authenticated Update Images" ON storage.objects FOR UPDATE WITH CHECK (bucket_id = 'product-images');
 
-create policy "Public product image upload access"
-on storage.objects for insert
-to public
-with check (bucket_id = 'product-images');
+-- جدول الحملات الإعلانية والترويج
+CREATE TABLE IF NOT EXISTS public.campaigns (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    title TEXT NOT NULL,
+    template_type TEXT NOT NULL,
+    message_body TEXT NOT NULL,
+    image_url TEXT,
+    target_count INT DEFAULT 0,
+    status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'active', 'completed')) DEFAULT 'pending',
+    rejection_reason TEXT
+);
 
-create policy "Public product image update access"
-on storage.objects for update
-to public
-using (bucket_id = 'product-images')
-with check (bucket_id = 'product-images');
+-- 1. جدول المحادثات مع الزبائن
+CREATE TABLE IF NOT EXISTS public.conversations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    customer_name TEXT NOT NULL,
+    customer_phone_or_id TEXT NOT NULL,
+    platform TEXT CHECK (platform IN ('whatsapp', 'facebook', 'instagram', 'web')) DEFAULT 'whatsapp',
+    auto_reply_enabled BOOLEAN DEFAULT true,
+    last_message TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 2. جدول سجل الرسائل
+CREATE TABLE IF NOT EXISTS public.messages (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
+    sender TEXT CHECK (sender IN ('customer', 'ai', 'human')) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 3. تفعيل الاستماع الفوري للرسائل (Supabase Realtime)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+
