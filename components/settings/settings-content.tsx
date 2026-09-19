@@ -1,0 +1,90 @@
+"use client"
+
+import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useTheme } from "@/components/theme-provider"
+
+export function SettingsContent() {
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <div className="space-y-6 animate-fade-in max-w-4xl">
+      <Card className="p-6">
+        <h3 className="font-semibold text-lg mb-6">معلومات المتجر</h3>
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <Avatar className="w-20 h-20">
+              <AvatarImage src="/profile.jpg" alt="أبو أحمد" />
+              <AvatarFallback>أح</AvatarFallback>
+            </Avatar>
+            <div>
+              <Button variant="outline">تغيير الصورة</Button>
+              <p className="text-xs text-muted-foreground mt-2">JPG أو PNG أو GIF. الحجم الأقصى ٢ ميغابايت</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">اسم التاجر</Label>
+              <Input id="name" defaultValue="أبو أحمد" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store">اسم المتجر</Label>
+              <Input id="store" defaultValue="متجر النور" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">رقم الهاتف</Label>
+              <Input id="phone" type="tel" defaultValue="٠٧٧٠ ١٢٣ ٤٥٦٧" dir="ltr" className="text-right" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">المدينة</Label>
+              <Input id="city" defaultValue="بغداد" />
+            </div>
+          </div>
+
+          <Button className="bg-primary hover:bg-primary/90">حفظ التغييرات</Button>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="font-semibold text-lg mb-6">الإشعارات</h3>
+        <div className="space-y-4">
+          {[
+            { label: "إشعارات الديون المستحقة", description: "تنبيه عند اقتراب موعد استحقاق دين" },
+            { label: "تنبيهات نفاد المخزون", description: "تنبيه عند قرب نفاد أحد المنتجات" },
+            { label: "طلبات الزبائن الجديدة", description: "إشعار عند وصول طلب جديد" },
+            { label: "تقارير المبيعات الأسبوعية", description: "ملخص أسبوعي لأداء المتجر" },
+          ].map((item, index) => (
+            <div
+              key={item.label}
+              className="flex items-center justify-between py-3 border-b border-border last:border-0"
+            >
+              <div>
+                <p className="font-medium">{item.label}</p>
+                <p className="text-sm text-muted-foreground">{item.description}</p>
+              </div>
+              <Switch defaultChecked={index < 2} />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="font-semibold text-lg mb-6">المظهر</h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">الوضع الليلي</p>
+              <p className="text-sm text-muted-foreground">تفعيل المظهر الداكن</p>
+            </div>
+            <Switch checked={theme === "dark"} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
